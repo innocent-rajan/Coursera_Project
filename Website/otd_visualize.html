@@ -1,0 +1,253 @@
+
+<!DOCTYPE html>
+<html>
+    <head>
+
+        <style>
+            #map {
+                height: 100%;
+            }
+
+            html, body {
+                height: 100%;
+                margin: 0;
+                padding: 0;
+            }
+
+            #over_map {
+                position: absolute;
+                top: 10px;
+                left: 89%;
+                z-index: 99;
+                background-color: #ccffcc;
+                padding: 10px;
+            }
+        </style>
+    </head>
+
+    <body>
+        <div id="map"></div>
+
+        <div id="over_map">
+            <div>
+                <span>Online Buses: </span><span id="buses">0</span>
+                <br>Route Long Name: <input type="text" name="route_search" placeholder="Enter route long name" id="route_srch"><br>
+                Bus ID: <input type="text" name="bus_search" placeholder="Enter bus id" id="bus_srch"><br>
+                <!-- <span>Bus name: </span><span id="b_name">"no"</span> -->
+            </div>
+        </div>
+
+        <!-- jQuery CDN -->
+        <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+
+        <!-- Firebase -->
+        <script src="https://www.gstatic.com/firebasejs/4.12.1/firebase.js"></script>
+        <script>
+            // Replace your Configuration here..
+            // Initialize Firebase
+			  var config = {
+			  };
+			  firebase.initializeApp(config);
+        </script>
+
+        <script>
+            carOnMapFlag = true
+
+            // counter for online buses...
+            var buses_count = 0;
+
+            // markers array to store all the markers, so that we could remove marker when any car goes offline and its data will be remove from realtime database...
+            var markers = [];
+            var map;
+            function initMap() { // Google Map Initialization... 
+                map = new google.maps.Map(document.getElementById('map'), {
+                    zoom: 12,
+                    center: new google.maps.LatLng(28.628833, 77.206805),
+                    mapTypeId: 'terrain'
+                });
+            }
+            
+
+            // This Function will create a car icon with angle and add/display that marker on the map
+            function AddCar(data) {
+
+                // var icon = { // car icon
+                //     // path: 'M29.395,0H17.636c-3.117,0-5.643,3.467-5.643,6.584v34.804c0,3.116,2.526,5.644,5.643,5.644h11.759   c3.116,0,5.644-2.527,5.644-5.644V6.584C35.037,3.467,32.511,0,29.395,0z M34.05,14.188v11.665l-2.729,0.351v-4.806L34.05,14.188z    M32.618,10.773c-1.016,3.9-2.219,8.51-2.219,8.51H16.631l-2.222-8.51C14.41,10.773,23.293,7.755,32.618,10.773z M15.741,21.713   v4.492l-2.73-0.349V14.502L15.741,21.713z M13.011,37.938V27.579l2.73,0.343v8.196L13.011,37.938z M14.568,40.882l2.218-3.336   h13.771l2.219,3.336H14.568z M31.321,35.805v-7.872l2.729-0.355v10.048L31.321,35.805',
+                //     path: 'M367.524,92.122c-4.208-21.045-17.678-29.463-37.882-37.882c-19.918-8.299-67.648-18.229-102.872-18.507C191.548,36.012,143.819,45.941,123.9,54.24c-20.204,8.418-33.673,16.836-37.882,37.882L70.866,208.794V369.56h26.096v25.211c0,30.739,44.984,30.739,44.984,0V369.56h83.048h0.263h86.341v25.211c0,30.739,44.983,30.739,44.983,0V369.56h26.096V208.794L367.524,92.122z M162.625,65.184h62.631h65.662c12.628,0,12.628,18.941,0,18.941h-65.815h-62.478C149.997,84.125,149.997,65.184,162.625,65.184z M119.472,319.162c-11.918,0-21.58-9.662-21.58-21.58s9.662-21.579,21.58-21.579s21.58,9.661,21.58,21.579S131.39,319.162,119.472,319.162z M225.256,221.09H110.797c-11.206,0-13.552-8.051-12.452-16.162l11.793-84.621c1.62-10.281,5.105-17.059,18.444-17.059h96.521h99.857c13.34,0,16.824,6.778,18.443,17.059l11.795,84.621c1.1,8.111-1.246,16.162-12.452,16.162H225.256z M334.07,319.162c-11.918,0-21.579-9.662-21.579-21.58s9.661-21.579,21.579-21.579s21.579,9.661,21.579,21.579S345.988,319.162,334.07,319.162z',
+                //     scale: 0.4,
+                //     fillColor: "#427af4", //<-- Car Color, you can change it 
+                //     fillOpacity: 1,
+                //     strokeWeight: 1,
+                //     anchor: new google.maps.Point(0, 5),
+                //     // rotation: data.val().angle //<-- Car angle
+                // };
+
+                var uluru = { lat: data.val().lat, lng: data.val().lng };
+
+                var marker = new google.maps.Marker({
+                    position: uluru,
+                    // icon: icon,
+                    // icon: '/home/kshitij/Documents/OpenTransit/bus_marker_24px.png',
+                    icon: 'bus_marker_24px.png',
+                    map: map,
+                    title: data.val().id
+                });
+
+                markers[data.key] = marker; // add marker in the markers array...
+                document.getElementById("buses").innerHTML = buses_count;
+            }
+
+            // get firebase database reference...
+            var buses_Ref = firebase.database().ref("/realtime/")
+            var route_names_Ref = firebase.database().ref("/routes/")
+            var route_id_Ref = firebase.database().ref("/route_buses/")
+            var delay_flag = false
+            var delay = 500
+            var route_id = ""
+            var route_buses = []
+
+            function setAllMarkers(val) {
+                carOnMapFlag = true
+                buses_Ref.once('value', function(snapshot) {
+                    snapshot.forEach(function(child) {
+                        // console.log("markers", child.key)
+                        markers[child.key].setMap(map)                                    
+                    });
+                });
+            }
+
+            // this event will be triggered when a new object will be added in the database...
+            buses_Ref.on('child_added', function (data) {
+                buses_count++;
+                AddCar(data);
+                if ((document.getElementById("route_srch").value.toLowerCase() != "") && carOnMapFlag == false) {
+                    // console.log('yes or no', route_buses.includes(data.key));
+                    if (route_buses.includes(data.key)) {
+                        console.log("TRUE")
+                    }
+                    else {
+                        markers[data.key].setMap(null);
+                    }
+                    
+                }
+                else if (((data.key != document.getElementById("bus_srch").value.toUpperCase()) && carOnMapFlag == false)){
+                    markers[data.key].setMap(null);
+                    // console.log("ADDED");
+                }
+            });
+
+            // this event will be triggered on location change of any car...
+            buses_Ref.on('child_changed', function (data) {
+                markers[data.key].setMap(null);
+                AddCar(data);
+                // console.log("CHILD CHANGED", document.getElementById("bus_srch").value.toUpperCase(), data.key)
+                if ((document.getElementById("route_srch").value.toLowerCase() != "")  && carOnMapFlag == false){
+                    // console.log('yes or no', route_buses.includes(data.key));
+                    if (route_buses.includes(data.key)) {
+                        console.log("TRUE")
+                    }
+                    else {
+                        markers[data.key].setMap(null);
+                    }
+                }
+                else if ((data.key != document.getElementById("bus_srch").value.toUpperCase()) && carOnMapFlag == false) {
+                    markers[data.key].setMap(null);
+                        // console.log("DIFF");
+                }
+            });
+
+            // If any car goes offline then this event will get triggered and we'll remove the marker of that car...  
+            buses_Ref.on('child_removed', function (data) {
+                markers[data.key].setMap(null);
+                buses_count--;
+                document.getElementById("buses").innerHTML = buses_count;
+            });
+
+            document.getElementById("route_srch").onkeypress = function(e){
+                
+                if (!e) e = window.event;
+                var keyCode = e.keyCode || e.which;
+                if (keyCode == '13'){   
+                    // Enter pressed
+                    var route_name = document.getElementById("route_srch").value.toLowerCase();
+
+                    if (route_name == "all") {
+                        setAllMarkers(map);
+                        carOnMapFlag = true
+                    }
+                    
+                    else {
+                        route_names_Ref.child(route_name).on('value', function(snapshot) {
+                            route_id = snapshot.val();
+                            console.log("HELLO", route_id)
+                        });
+
+                        setTimeout(function(){
+                            console.log("ROUTE ID", route_id)
+                            route_id_Ref.child(route_id).once(`value`, function(snapshot) {
+                                if (snapshot.exists()) {
+                                    buses_Ref.once('value', function(snapshot_1) {
+                                        snapshot_1.forEach(function(child) {
+                                            // console.log("markers", child.key)
+                                            markers[child.key].setMap(null);
+                                            carOnMapFlag = false;                        
+                                        });
+                                        console.log("AGAIN");
+                                    });
+
+                                    // CHECK THIS UPDATE
+                                    // setAllMarkers(null)
+                                    // carOnMapFlag = false
+                                    var i = 0;
+                                    route_buses = []
+                                    snapshot.forEach(function(child) {
+                                            route_buses[i] = child.key;
+                                            markers[child.key].setMap(map);
+                                            i++;
+                                    })
+                                }
+                                else {
+                                    window.alert('No buses on this route!!')
+                                }
+                            });
+                        }, delay);
+                    }
+                }   
+            }
+
+            document.getElementById("bus_srch").onkeypress = function(e){
+                if (!e) e = window.event;
+                var keyCode = e.keyCode || e.which;
+                if (keyCode == '13') {
+                    var bus = document.getElementById("bus_srch").value.toUpperCase();
+                    console.log("Bus", bus)
+
+                    if (bus == "ALL") {
+                        setAllMarkers(map)
+                    }
+                    buses_Ref.child(bus).once('value', function(snapshot) {
+                        if (snapshot.exists()) {
+                            buses_Ref.once('value', function(snapshot_1) {
+                                snapshot_1.forEach(function(child) {
+                                    // console.log("markers", child.key)
+                                    markers[child.key].setMap(null) 
+                                    carOnMapFlag = false                                   
+                                });
+                            });
+
+                            // CHECK THIS AS WELL
+                            // setAllMarkers(null)
+                            // carOnMapFlag = false
+                            markers[bus].setMap(map)
+                        }
+                    });
+                }
+            }
+
+        </script>
+
+        <script async defer src="https://maps.googleapis.com/maps/api/js?key=API_KEY&callback=initMap">
+        </script>
+
+    </body>
+</html>
